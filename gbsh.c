@@ -1,12 +1,14 @@
 #include "start.c"
 
+// If any problem occur enter clear
+
 int out;
 int save_out;
 bool ofileused = 0; 	
 void checkforRedirectino( char command[100] );
-
-
-
+void check_if_to_run_in_backgroung(char command[100]);
+bool runbackground = 0;
+int wfor;
 int main(int argc, char *argv[] , char * envp[]) {
 	
 	signal(SIGINT, SIG_IGN);// This is to ignore sigint command; 
@@ -32,9 +34,11 @@ int main(int argc, char *argv[] , char * envp[]) {
 
  		//getting command from user
         scanf("%[^\n]s ",command);
-        
+        // try using & at end without any space
+        check_if_to_run_in_backgroung(command);
+
         // executing entered command
-        if ( ! strcmp(command,"exit")  )
+        if ( ! strncmp(command,"exit",4)  )
     		exit(0);
     	
     	else if ( ! strncmp(command,"pwd",3) ){
@@ -102,8 +106,8 @@ int main(int argc, char *argv[] , char * envp[]) {
         
         }else {// part d , e and g are implemeted here(all commands other than above will go here)
             
-           
-            if ( fork() == 0 ){ // child proc.
+           	wfor = fork();
+            if ( wfor == 0 ){ // child proc.
                 
                 // to set the envirnment variable as required
                 char str[100] = "parent=";
@@ -147,16 +151,21 @@ int main(int argc, char *argv[] , char * envp[]) {
 			                    char * args[] = { parameters[0],NULL };
 			                    execvp( args[0],args );
 			                    printf("command not found\n"); 
-                
+            				  	for ( int i = 0 ; i < c ; i++ ) printf("%s\n",parameters[i] );
+
 			                }else if ( c == 2 ){
 			                    char * args[] = { parameters[0],parameters[1],NULL };
 			                    execvp( args[0],args );      
 			           	    	printf("command not found\n"); 
-               
+							  	for ( int i = 0 ; i < c ; i++ ) printf("%s\n",parameters[i] );
+
+
 			                }else if ( c == 3 ){
 			               		char * args[] = { parameters[0],parameters[1],parameters[2],NULL };
 			                    execvp( args[0],args );      			                	
 			                    printf("command not found\n");                
+			                  	for ( int i = 0 ; i < c ; i++ ) printf("%s\n",parameters[i] );
+
 			                }
                     	
                     	}else{
@@ -183,15 +192,21 @@ int main(int argc, char *argv[] , char * envp[]) {
                     char * args[] = { parameters[0],NULL };
                     execvp( args[0],args );
                     printf("command not found\n"); 
+                	for ( int i = 0 ; i < c ; i++ ) printf("%s\n",parameters[i] );
+
                 }else if ( c == 2 ){
                     char * args[] = { parameters[0],parameters[1],NULL };
                     execvp( args[0],args );      
                		printf("command not found\n"); 
-               
+          		  	for ( int i = 0 ; i < c ; i++ ) printf("%s\n",parameters[i] );
+
+                
                 }else if ( c == 3 ){
                		char * args[] = { parameters[0],parameters[1],parameters[2],NULL };
                     execvp( args[0],args );      			                	
                 	printf("command not found\n");                
+	        	  	for ( int i = 0 ; i < c ; i++ ) printf("%s\n",parameters[i] );
+
                 }
               
               
@@ -199,8 +214,13 @@ int main(int argc, char *argv[] , char * envp[]) {
 
 
             }else{// To avoid Zombie process
-                wait(NULL);
-            	
+               if ( /* true || */runbackground == 0){ // uncomment the part
+               		int s;
+                	waitpid(wfor, &s,NULL);
+            	 	
+                }
+               else
+            		printf("Trying to run command in background\n" ),runbackground = 0;
             }
 
 
@@ -251,13 +271,9 @@ void checkforRedirectino( char command[50] ){
 }
 
 
-
-
-
-
-
-
-
-
-
+// try using & at end without any space
+void check_if_to_run_in_backgroung(char command[100]){
+ 	if (!strncmp( command + (	strlen(command) - 1 ),"&",1 ))
+ 		command[strlen(command) - 1] = '\0',runbackground = 1;
+}
 

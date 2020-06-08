@@ -6,6 +6,10 @@
 #include <iostream>
 #include <stdio.h>
 #include <cstring>
+#include <dirent.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+
 
 struct data{
 	
