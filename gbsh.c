@@ -1,16 +1,20 @@
 #include "start.c"
-#include <cstring>
-#include <dirent.h>
-#include <sys/wait.h>
-#include <fcntl.h>
+
+int out;
+int save_out;
+bool ofileused = 0; 	
+void checkforRedirectino( char command[100] );
+
+
 
 int main(int argc, char *argv[] , char * envp[]) {
-
+	
+	signal(SIGINT, SIG_IGN);// This is to ignore sigint command; 
 	struct data d;
 	char command[50];
 	
     while(1){
-
+		//displaying name,user , working directory
     	fprintf(stdout, "\033[0;32m");
     	fprintf(stdout, "%s@", d.user);
     	fprintf(stdout, "%s:", d.host);
@@ -18,19 +22,30 @@ int main(int argc, char *argv[] , char * envp[]) {
     	fprintf(stdout, " %s ", d.cwd);
  		fprintf(stdout, "\033[0;0m");
     	fprintf(stdout, " > ");
+
+    	//setting env variable
  		char e[200] = "SHELL=" ;
  		strcat( e,d.cwd );
  		strcat(e,"/");
  		strcat(e,"gbsh");
  		putenv(e);
+
+ 		//getting command from user
         scanf("%[^\n]s ",command);
+        
+        // executing entered command
         if ( ! strcmp(command,"exit")  )
     		exit(0);
-    	else if ( ! strcmp(command,"pwd") )
-    		fprintf(stdout, "%s\n", d.cwd);
-		else if ( ! strcmp(command,"clear") )
+    	
+    	else if ( ! strncmp(command,"pwd",3) ){
+    		checkforRedirectino(command);
+    		printf("%s\n", d.cwd);
+
+    	}else if ( ! strcmp(command,"clear") )
     		system("clear");
-        else if ( ! strcmp (command,"ls") ){
+        
+        else if ( ! strncmp (command,"ls",2) ){
+        	checkforRedirectino(command);
             struct dirent *entry;
             DIR *dir = opendir(d.cwd);
             while ((entry = readdir(dir)) != NULL ) {
@@ -39,15 +54,22 @@ int main(int argc, char *argv[] , char * envp[]) {
                 printf("%s\n",entry->d_name ); 
             }
             closedir(dir);      
+        
+           
+
         }else if ( ! strncmp( command , "cd " ,3) ){
             if(!d.updateCWD(command+3))
                 printf("File/Directory not found.\n");
+        
         }else if ( !strcmp(command,"cd") ){
             d.navigateToHome();
-	    }else if ( ! strcmp( command,"environ") ){
+	    
+	    }else if ( ! strncmp( command,"environ",3) ){
+        	checkforRedirectino(command);
         	for (short i = 0; envp[i] != NULL; i++)
     		    printf("\n%s", envp[i]);
     		printf("\n");
+        
         }else if ( ! strncmp(command,"setenv ",7) ){
         	char f[2] = " ";
         	char p[200] ;
@@ -62,9 +84,7 @@ int main(int argc, char *argv[] , char * envp[]) {
         	strcat(p,token);
         	strcat(p,"=");
         	token = strtok( NULL, f  );
-        	
-        //	printf("%d\n",overwrite );
-        	if ( token != NULL )
+      		if ( token != NULL )
       			strcat(p,token);
         
       		if (putenv(p) != 0)
@@ -79,8 +99,10 @@ int main(int argc, char *argv[] , char * envp[]) {
         		continue;
         	}
         	unsetenv(token);
-        }else {// part d and e are implemeted here
+        
+        }else {// part d , e and g are implemeted here(all commands other than above will go here)
             
+           
             if ( fork() == 0 ){ // child proc.
                 
                 // to set the envirnment variable as required
@@ -93,62 +115,149 @@ int main(int argc, char *argv[] , char * envp[]) {
                 char *ptr = strtok(command, delim);
                 int c = 0 ;
                 char parameters[100][100]; 
-
-
-
-                while( ptr != NULL ){  // This will read the command line by line and try to find any redirection
+                int rw[2];
+                int p = pipe(rw);
+                
+                if ( p == -1 )
+                	printf("pipe not created\n");
+                
+                while( ptr != NULL ){  // This will read the command word by word and try to find any redirection and piping
                     if ( !strncmp(ptr,">",1)  ){
                         ptr = strtok(NULL,delim); 
-                        int ofile = open( ptr,O_WRONLY| O_CREAT);
-                        dup2 ( ofile,STDOUT_FILENO);
-
+                        ofileused = 1;
+						out = open(ptr, O_RDWR|O_CREAT, 0600);
+						save_out = dup(fileno(stdout)); // saving the copy of standard output buffer
+						dup2(out, fileno(stdout));                    			           
                     }
                     else if ( !strncmp(ptr,"<",1)  ){
                         ptr = strtok(NULL,delim); 
                         int ifile = open( ptr,O_RDONLY );
                         dup2 ( ifile,STDIN_FILENO);
-                    }else{
+                    }
+                    else if ( !strncmp(ptr,"|",1) ){
+                    	//This part will allow dynamic chaining of multiple pipes.
+                    	//chainlength ++ ;
+                    	if ( fork() == 0 ){
+                    		
+                			close(rw[0]);
+                			dup2(rw[1],STDOUT_FILENO);//redirecting
+                
+
+                    		if (c == 1){
+			                    char * args[] = { parameters[0],NULL };
+			                    execvp( args[0],args );
+			                    printf("command not found\n"); 
+                
+			                }else if ( c == 2 ){
+			                    char * args[] = { parameters[0],parameters[1],NULL };
+			                    execvp( args[0],args );      
+			           	    	printf("command not found\n"); 
+               
+			                }else if ( c == 3 ){
+			               		char * args[] = { parameters[0],parameters[1],parameters[2],NULL };
+			                    execvp( args[0],args );      			                	
+			                    printf("command not found\n");                
+			                }
+                    	
+                    	}else{
+                    		wait(NULL);
+                    		c = 0;
+							close (rw[1]);
+							dup2(rw[0],STDIN_FILENO);//redirecting again                			
+                    	}
+
+                    	
+                    }
+
+
+
+                    else{
                         strcpy( parameters[c],ptr );
                         c++;
                     }
 
                     ptr = strtok(NULL,delim);
-                 
                 }
-                            
-                if (c == 1){
+                
+                if (c == 1){ // final command will run here in case of piping 
                     char * args[] = { parameters[0],NULL };
-                    execvp( args[0],args ); 
+                    execvp( args[0],args );
+                    printf("command not found\n"); 
                 }else if ( c == 2 ){
                     char * args[] = { parameters[0],parameters[1],NULL };
                     execvp( args[0],args );      
+               		printf("command not found\n"); 
+               
+                }else if ( c == 3 ){
+               		char * args[] = { parameters[0],parameters[1],parameters[2],NULL };
+                    execvp( args[0],args );      			                	
+                	printf("command not found\n");                
                 }
+              
+              
+             
+
 
             }else{// To avoid Zombie process
                 wait(NULL);
+            	
             }
 
 
-        }// part d and e ending.
+        }// part d, e and g are ending here.
 
+    	
 
-
-
-
-
-
-
+    	// This proc will direct output back to standard consol if file used for output
+    	if ( ofileused == 1 ){
+			dup2(save_out, fileno(stdout));
+			close(save_out);
+			ofileused = 0;
+    		fflush(stdout); close(out);    
+    	}
 
         while ((getchar()) != '\n'); // to clear input buffer
         command[0] = '\0';// to set string to NULL
     }
 
-	// shell code here
 	
-	// ...
-	
-	// ...
 
-	exit(0); // exit normally	
-        
+
+	exit(0); // exit normally	    
 }
+
+
+
+
+
+
+
+
+
+// This procedure will check output redirection in ls,environ and pwd and direct if required
+void checkforRedirectino( char command[50] ){
+	char delim[] = " ";
+	char *ptr = strtok(command, delim);
+	while ( ptr != NULL ){
+		if ( !strncmp(ptr,">",2) ){
+			ptr = strtok(NULL,delim); 
+			ofileused = 1;
+			out = open(ptr, O_RDWR|O_CREAT, 0600);
+			save_out = dup(fileno(stdout));
+			dup2(out, fileno(stdout));
+		}
+		ptr  = strtok(NULL,delim);
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
